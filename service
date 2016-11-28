@@ -1,0 +1,9 @@
+[Unit]
+Description=Fiaas Service
+
+[Service]
+ExecStart=/usr/bin/fiaas.py
+Restart=on-abort
+
+[Install]
+WantedBy=multi-user.target

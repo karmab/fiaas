@@ -1,0 +1,13 @@
+[DEFAULT]
+listen = 0.0.0.0
+port = 7000
+ssl = False
+[keystone]
+auth_url = http://192.168.100.5:5000/v2.0
+admin_user = admin
+admin_password = unix1234
+admin_tenant = admin
+[rbac]
+enabled = True
+mappings = testk:dev+pre
+blacklist = 192.168.16.10,192.168.16.11,192.168.16.13

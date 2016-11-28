@@ -1,0 +1,43 @@
+---
+- name: Install Fiaas
+  hosts: neutron
+  remote_user: cloud-user
+  gather_facts: true
+  become: yes
+  become_user: root
+  become_method: sudo
+  tasks:
+   - name: Install Packages
+     package:
+      name: '{{ item }}'
+      state: present
+     with_items:
+      - 'python-flask' 
+      - 'python-iptools'
+      - 'python-keystoneclient'
+      - 'python-neutronclient'
+   - name: Install Script File
+     copy:
+      src: py
+      dest: /usr/bin/fiaas.py
+      mode: 0700
+   - name: Install Configuration File
+     copy:
+      src: conf
+      dest: /etc/fiaas.conf
+     notify:
+      - Restart Fiaas
+   - name: Install Systemd File
+     copy:
+      src: service
+      dest: /usr/lib/systemd/system/fiaas.service
+   - name: Enable Service
+     service:
+      name: fiaas
+      enabled: yes
+      state: started
+  handlers:
+   - name: Restart Fiaas
+     service: name=fiaas state=restarted
+
+
