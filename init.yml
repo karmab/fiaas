@@ -18,7 +18,7 @@
       - 'python-neutronclient'
    - name: Install Script File
      copy:
-      src: py
+      src: fiaas.py
       dest: /usr/bin/fiaas.py
       mode: 0700
    - name: Install Configuration File

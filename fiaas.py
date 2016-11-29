@@ -31,13 +31,13 @@ from oslo_config.cfg import ConfigFileParseError
 from oslo_log import log as logging
 import os
 
-__version__ = "0.2"
+__version__ = "0.4"
 
 
 LOG = logging.getLogger(__name__)
 CONF = cfg.CONF
+DOMAIN = 'fiaas'
 logging.register_options(CONF)
-logging.setup(CONF, 'fiaas')
 defaultgroup = cfg.OptGroup(name='DEFAULT')
 defaultopts = [cfg.StrOpt('host', default='0.0.0.0'), cfg.IntOpt('port', default=7000), cfg.BoolOpt('ssl', default=False), cfg.StrOpt('cert', default='/etc/fiaas.crt'), cfg.StrOpt('key', default='/etc/fiaas.key')]
 CONF.register_group(defaultgroup)
@@ -69,6 +69,7 @@ adminpassword = CONF.keystone.admin_password
 rbac = CONF.rbac.enabled
 mappings = CONF.rbac.mappings
 blacklist = CONF.rbac.blacklist
+logging.setup(CONF, DOMAIN)
 if auth_url is None or adminpassword is None:
     LOG.error("Incorrect keystone information in configuration file /etc/neutron/fiaas.conf.Leaving...")
     os._exit(0)
@@ -150,16 +151,24 @@ def getip():
             response.status_code = 401
             return response
     networkid = subnet['network_id']
-    floatingips = [i['fixed_ips'][0]['ip_address'] for i in n.list_ports()['ports'] if i['device_owner'] == 'network:floatingip' or i['device_owner'] == 'network:router_gateway']
-    if blacklist is not None:
-        floatingips += blacklist
+    # floatingips = [i['fixed_ips'][0]['ip_address'] for i in n.list_ports()['ports'] if i['device_owner'] == 'network:floatingip' or i['device_owner'] == 'network:router_gateway']
     cidr = subnet['cidr']
     range = IpRange(cidr)
+    floatingips = [i['fixed_ips'][0]['ip_address'] for i in n.list_ports()['ports'] if i['fixed_ips'] and 'ip_address' in i['fixed_ips'][0].keys() and i['fixed_ips'][0]['ip_address'] in range]
+    if blacklist is not None:
+        floatingips += blacklist
     for ip in range[2:-1]:
         if ip not in floatingips:
             break
     args = dict(floating_network_id=networkid, tenant_id=tenantid, floating_ip_address=ip)
-    n.create_floatingip(body={'floatingip': args})
+    try:
+        n.create_floatingip(body={'floatingip': args})
+    except Exception as e:
+        LOG.info("Couldnt associate floating because of %s\n" % (e.message))
+        message = {'error': {'message': e.message}}
+        response = jsonify(**message)
+        response.status_code = 403
+        return response
     LOG.info("Associating ip %s from subnet %s to tenant %s\n" % (ip, subnetname, tenantname))
     data = {'subnet': subnetname, 'tenant': tenantname, 'ip': ip}
     message = {'data': data}
