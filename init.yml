@@ -23,13 +23,13 @@
       mode: 0700
    - name: Install Configuration File
      copy:
-      src: conf
+      src: fiaas.conf
       dest: /etc/fiaas.conf
      notify:
       - Restart Fiaas
    - name: Install Systemd File
      copy:
-      src: service
+      src: fiaas.service
       dest: /usr/lib/systemd/system/fiaas.service
    - name: Enable Service
      service:
@@ -39,5 +39,3 @@
   handlers:
    - name: Restart Fiaas
      service: name=fiaas state=restarted
-
-
