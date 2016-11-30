@@ -177,4 +177,4 @@ def getip():
     return response
 
 if __name__ == "__main__":
-    app.run(host=host, port=port, ssl_context=context)
+    app.run(debug=False, host=host, port=port, ssl_context=context, extra_files=['/etc/fiaas.conf'])

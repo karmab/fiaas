@@ -3,7 +3,7 @@ Description=Fiaas Service
 
 [Service]
 ExecStart=/usr/bin/fiaas.py
-ExecReload=/bin/kill -HUP $MAINPID
+#ExecReload=/bin/touch /etc/fiaas.conf
 Restart=on-abort
 
 [Install]
