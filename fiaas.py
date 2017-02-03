@@ -151,10 +151,14 @@ def getip():
             response.status_code = 401
             return response
     networkid = subnet['network_id']
-    # floatingips = [i['fixed_ips'][0]['ip_address'] for i in n.list_ports()['ports'] if i['device_owner'] == 'network:floatingip' or i['device_owner'] == 'network:router_gateway']
     cidr = subnet['cidr']
     range = IpRange(cidr)
-    floatingips = [i['fixed_ips'][0]['ip_address'] for i in n.list_ports()['ports'] if i['fixed_ips'] and 'ip_address' in i['fixed_ips'][0].keys() and i['fixed_ips'][0]['ip_address'] in range]
+    # floatingips = [i['fixed_ips'][0]['ip_address'] for i in n.list_ports()['ports'] if i['fixed_ips'] and 'ip_address' in i['fixed_ips'][0].keys() and i['fixed_ips'][0]['ip_address'] in range]
+    floatingips = []
+    fixedports = [i for i in n.list_ports()['ports'] if i['fixed_ips']]
+    for i in fixedports:
+        newips = [entry['ip_address'] for entry in i['fixed_ips'] if 'ip_address' in entry and entry['ip_address'] in range]
+        floatingips.extend(newips)
     if blacklist is not None:
         floatingips += blacklist
     for ip in range[2:-1]:
