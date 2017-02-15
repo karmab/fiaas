@@ -38,14 +38,6 @@ type Data struct {
 	Error Error `json:"error"`
 }
 
-//func (credentials *Credentials) Id() string {
-//func (ip string) Id() string {
-//	//return "id-" + credentials.Subnet + "!"
-//	return ip
-//}
-
-//func (c *Server) GetIp(m *Ip) error {
-//func (c *Server) GetIp(credentials *Credentials) string {
 func (c *Server) GetIp(credentials *Credentials) Data {
 	data1 := url.Values{}
 	data1.Add("tenant", credentials.Tenant)
@@ -66,11 +58,6 @@ func (c *Server) GetIp(credentials *Credentials) Data {
 		log.Fatalln(err)
 	}
 	return data
-	//		if data.Net.Ip != "" {
-	//			return data.Net.Ip
-	//	} else {
-	//		return data.Error.Message
-	//	}
 }
 
 func main() {
@@ -81,7 +68,7 @@ func main() {
 }
 
 func Provider() terraform.ResourceProvider {
-	return &schema.Provider{ // Source https://github.com/hashicorp/terraform/blob/v0.6.6/helper/schema/provider.go#L20-L43
+	return &schema.Provider{
 		Schema:        providerSchema(),
 		ResourcesMap:  providerResources(),
 		ConfigureFunc: providerConfigure,
@@ -153,17 +140,6 @@ func providerConfigure(d *schema.ResourceData) (interface{}, error) {
 	return &client, nil
 }
 
-// The methods defined below will get called for each resource that needs to
-// get created (createFunc), read (readFunc), updated (updateFunc) and deleted (deleteFunc).
-// For example, if 10 resources need to be created then `createFunc`
-// will get called 10 times every time with the information for the proper
-// resource that is being mapped.
-//
-// If at some point any of these functions returns an error, Terraform will
-// imply that something went wrong with the modification of the resource and it
-// will prevent the execution of further calls that depend on that resource
-// that failed to be created/updated/deleted.
-
 func createFunc(d *schema.ResourceData, meta interface{}) error {
 	client := meta.(*Server)
 	credentials := Credentials{
@@ -172,9 +148,6 @@ func createFunc(d *schema.ResourceData, meta interface{}) error {
 	}
 
 	result := client.GetIp(&credentials)
-	//	if result.Contains != "" {
-	//		return errors.New(result)
-	//	}
 	if result.Net.Ip == "" {
 		return errors.New(result.Error.Message)
 	}
