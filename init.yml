@@ -1,6 +1,6 @@
 ---
 - name: Install Fiaas
-  hosts: liberty
+  hosts: eduliberty
   remote_user: cloud-user
   gather_facts: true
   become: yes
