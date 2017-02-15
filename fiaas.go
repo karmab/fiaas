@@ -17,10 +17,10 @@ func authenticate(username string, password string, tenant string) bool {
 	fmt.Println("username:", username)
 	fmt.Println("password:", password)
 	opts := gophercloud.AuthOptions{
-		IdentityEndpoint: "http://127.0.0.1:5000/v2.0",
+		IdentityEndpoint: "http://192.168.122.162:5000/v2.0",
 		Username:         username,
 		Password:         password,
-		TenantID:         tenant,
+		TenantName:       tenant,
 	}
 	_, err := openstack.AuthenticatedClient(opts)
 	if err != nil {
@@ -53,7 +53,7 @@ func getip(w http.ResponseWriter, r *http.Request) {
 	if authorized == false {
 		fmt.Fprintf(w, "Wrong Credentials")
 	}
-	fmt.Fprintf(w, "Hello coco") // write data to response
+	fmt.Fprintf(w, "Ready to process") // write data to response
 }
 
 func main() {
