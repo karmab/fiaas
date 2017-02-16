@@ -35,15 +35,6 @@ type Rbac struct {
 	Blacklist string `ini:"blacklist"`
 }
 
-//type Config struct {
-//	Port      string
-//	Blacklist []string
-//	Endpoint  string
-//	Username  string
-//	Password  string
-//	Tenant    string
-//}
-
 type Config struct {
 	Defaults Defaults `ini:"DEFAULT"`
 	Keystone Keystone `ini:"keystone"`
