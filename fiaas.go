@@ -1,7 +1,7 @@
 package main
 
 import (
-	//	"encoding/json"
+	"encoding/json"
 	"fmt"
 	"github.com/rackspace/gophercloud"
 	"github.com/rackspace/gophercloud/openstack"
@@ -14,6 +14,16 @@ import (
 	"net/http"
 	"strings"
 )
+
+type Error struct {
+	Message string `json:"message"`
+}
+
+type Data struct {
+	Subnet string `json:"subnet"`
+	Tenant string `json:"tenant"`
+	Ip     string `json:"ip"`
+}
 
 func Ips(cidr string) ([]string, error) {
 	ip, ipnet, err := net.ParseCIDR(cidr)
@@ -39,6 +49,7 @@ func inc(ip net.IP) {
 }
 
 type Config struct {
+	Port      string
 	Blacklist []string
 	Endpoint  string
 	Username  string
@@ -57,7 +68,6 @@ func GetPorts(n *gophercloud.ServiceClient, cidr string) map[string]bool {
 			for _, entry := range p.FixedIPs {
 				ip := net.ParseIP(entry.IPAddress)
 				if networkrange.Contains(ip) {
-					//results = append(results, entry.IPAddress)
 					results[entry.IPAddress] = true
 				}
 			}
@@ -109,7 +119,8 @@ func authenticate(endpoint string, username string, password string, tenant stri
 }
 
 func getip(w http.ResponseWriter, r *http.Request) {
-	config := Config{Endpoint: "http://192.168.122.162:5000/v2.0", Username: "admin", Password: "unix1234", Tenant: "admin"}
+	w.Header().Set("Content-Type", "application/json")
+	config := Config{Port: "7000", Endpoint: "http://192.168.122.162:5000/v2.0", Username: "admin", Password: "unix1234", Tenant: "admin"}
 	r.ParseForm()
 	for k, v := range r.Form {
 		if k == "tenant" {
@@ -120,15 +131,26 @@ func getip(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if tenant == "" || subnet == "" {
-		fmt.Fprintf(w, "Missing Data")
+		w.WriteHeader(404)
+		message := Error{Message: "Missing Data"}
+		response, _ := json.Marshal(message)
+		w.Write(response)
+		return
 	}
 	username, password, _ := r.BasicAuth()
 	if username == "" || password == "" {
-		fmt.Fprintf(w, "Missing Credentials")
+		w.WriteHeader(401)
+		message := Error{Message: "Missing Credentials"}
+		response, _ := json.Marshal(message)
+		w.Write(response)
+		return
 	}
 	tenantid := authenticate(config.Endpoint, username, password, tenant)
 	if tenantid == "" {
-		fmt.Fprintf(w, "Wrong Credentials")
+		w.WriteHeader(401)
+		message := Error{Message: "Wrong Credentials"}
+		response, _ := json.Marshal(message)
+		w.Write(response)
 		return
 	}
 	admincredentials := gophercloud.AuthOptions{
@@ -145,7 +167,10 @@ func getip(w http.ResponseWriter, r *http.Request) {
 	subnets := GetSubnets(n)
 	subnetinfo, ok := subnets[subnet]
 	if ok == false {
-		fmt.Fprintf(w, "Subnet %s not found", subnet)
+		w.WriteHeader(404)
+		message := Error{Message: "Subnet not found"}
+		response, _ := json.Marshal(message)
+		w.Write(response)
 		return
 	}
 	networkid := subnetinfo.NetworkID
@@ -159,14 +184,18 @@ func getip(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
-	fmt.Println(ip)
 	opts := floatingips.CreateOpts{
 		FloatingNetworkID: networkid,
 		FloatingIP:        ip,
 		TenantID:          tenantid,
 	}
-	floatingip, _ := floatingips.Create(n, opts).Extract()
-	fmt.Println(floatingip)
+	floatingips.Create(n, opts).Extract()
+	log.Printf("Associating ip %s from subnet %s to tenant %s\n", ip, subnet, tenant)
+	w.WriteHeader(200)
+	data := Data{Subnet: subnet, Tenant: tenant, Ip: ip}
+	response, _ := json.Marshal(data)
+	w.Write(response)
+	return
 }
 
 func main() {
