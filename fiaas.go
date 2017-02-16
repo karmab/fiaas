@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/go-ini/ini"
 	"github.com/rackspace/gophercloud"
 	"github.com/rackspace/gophercloud/openstack"
 	"github.com/rackspace/gophercloud/openstack/identity/v2/tenants"
@@ -14,6 +15,40 @@ import (
 	"net/http"
 	"strings"
 )
+
+type Keystone struct {
+	Endpoint      string `ini:"auth_url"`
+	AdminUser     string `ini:"admin_user"`
+	AdminPassword string `ini:"admin_password"`
+	AdminTenant   string `ini:"admin_tenant"`
+}
+
+type Defaults struct {
+	Host string `ini:"host"`
+	Port string `ini:"port"`
+	Ssl  string `ini:"ssl"`
+}
+
+type Rbac struct {
+	Enabled   string `ini:"enabled"`
+	Mappings  string `ini:"mappings"`
+	Blacklist string `ini:"blacklist"`
+}
+
+//type Config struct {
+//	Port      string
+//	Blacklist []string
+//	Endpoint  string
+//	Username  string
+//	Password  string
+//	Tenant    string
+//}
+
+type Config struct {
+	Defaults Defaults `ini:"DEFAULT"`
+	Keystone Keystone `ini:"keystone"`
+	Rbac     Rbac     `ini:"rbac"`
+}
 
 type Error struct {
 	Message string `json:"message"`
@@ -46,15 +81,6 @@ func inc(ip net.IP) {
 			break
 		}
 	}
-}
-
-type Config struct {
-	Port      string
-	Blacklist []string
-	Endpoint  string
-	Username  string
-	Password  string
-	Tenant    string
 }
 
 //func GetPorts(n *gophercloud.ServiceClient, cidr string) []ports.Port {
@@ -120,7 +146,11 @@ func authenticate(endpoint string, username string, password string, tenant stri
 
 func getip(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	config := Config{Port: "7000", Endpoint: "http://192.168.122.162:5000/v2.0", Username: "admin", Password: "unix1234", Tenant: "admin"}
+	defaults := Defaults{Host: "0.0.0.0", Port: "7000", Ssl: "false"}
+	keystone := Keystone{AdminUser: "admin", AdminTenant: "admin"}
+	rbac := Rbac{Enabled: "false"}
+	config := &Config{Defaults: defaults, Keystone: keystone, Rbac: rbac}
+	ini.MapTo(config, "fiaas.conf")
 	r.ParseForm()
 	for k, v := range r.Form {
 		if k == "tenant" {
@@ -145,7 +175,7 @@ func getip(w http.ResponseWriter, r *http.Request) {
 		w.Write(response)
 		return
 	}
-	tenantid := authenticate(config.Endpoint, username, password, tenant)
+	tenantid := authenticate(config.Keystone.Endpoint, username, password, tenant)
 	if tenantid == "" {
 		w.WriteHeader(401)
 		message := Error{Message: "Wrong Credentials"}
@@ -154,10 +184,10 @@ func getip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	admincredentials := gophercloud.AuthOptions{
-		IdentityEndpoint: config.Endpoint,
-		Username:         config.Username,
-		Password:         config.Password,
-		TenantName:       config.Tenant,
+		IdentityEndpoint: config.Keystone.Endpoint,
+		Username:         config.Keystone.AdminUser,
+		Password:         config.Keystone.AdminPassword,
+		TenantName:       config.Keystone.AdminTenant,
 	}
 	auth, _ := openstack.AuthenticatedClient(admincredentials)
 	n, _ := openstack.NewNetworkV2(auth, gophercloud.EndpointOpts{
@@ -199,8 +229,13 @@ func getip(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	defaults := Defaults{Host: "0.0.0.0", Port: "7000", Ssl: "false"}
+	keystone := Keystone{AdminUser: "admin", AdminTenant: "admin"}
+	rbac := Rbac{Enabled: "false"}
+	config := &Config{Defaults: defaults, Keystone: keystone, Rbac: rbac}
+	ini.MapTo(config, "fiaas.conf")
 	http.HandleFunc("/getip", getip)
-	err := http.ListenAndServe(":7000", nil)
+	err := http.ListenAndServe(config.Defaults.Host+":"+config.Defaults.Port, nil)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 	}
