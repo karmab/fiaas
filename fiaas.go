@@ -16,6 +16,8 @@ import (
 	"strings"
 )
 
+var config *Config
+
 type Keystone struct {
 	Endpoint      string `ini:"auth_url"`
 	AdminUser     string `ini:"admin_user"`
@@ -137,11 +139,6 @@ func authenticate(endpoint string, username string, password string, tenant stri
 
 func getip(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	defaults := Defaults{Host: "0.0.0.0", Port: "7000", Ssl: "false"}
-	keystone := Keystone{AdminUser: "admin", AdminTenant: "admin"}
-	rbac := Rbac{Enabled: "false"}
-	config := &Config{Defaults: defaults, Keystone: keystone, Rbac: rbac}
-	ini.MapTo(config, "fiaas.conf")
 	r.ParseForm()
 	for k, v := range r.Form {
 		if k == "tenant" {
@@ -223,7 +220,7 @@ func main() {
 	defaults := Defaults{Host: "0.0.0.0", Port: "7000", Ssl: "false"}
 	keystone := Keystone{AdminUser: "admin", AdminTenant: "admin"}
 	rbac := Rbac{Enabled: "false"}
-	config := &Config{Defaults: defaults, Keystone: keystone, Rbac: rbac}
+	config = &Config{Defaults: defaults, Keystone: keystone, Rbac: rbac}
 	ini.MapTo(config, "fiaas.conf")
 	http.HandleFunc("/getip", getip)
 	err := http.ListenAndServe(config.Defaults.Host+":"+config.Defaults.Port, nil)
