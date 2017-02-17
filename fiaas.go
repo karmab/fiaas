@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/go-ini/ini"
 	"github.com/rackspace/gophercloud"
 	"github.com/rackspace/gophercloud/openstack"
@@ -13,10 +12,13 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 )
 
 var config *Config
+var mappings map[string][]string
+var blacklist []string
 
 type Keystone struct {
 	Endpoint      string `ini:"auth_url"`
@@ -26,13 +28,18 @@ type Keystone struct {
 }
 
 type Defaults struct {
-	Host string `ini:"host"`
-	Port string `ini:"port"`
-	Ssl  string `ini:"ssl"`
+	Host    string `ini:"host"`
+	Port    string `ini:"port"`
+	Ssl     bool   `ini:"ssl"`
+	Cert    string `ini:"cert"`
+	Key     string `ini:"key"`
+	LogDir  string `ini:"log_dir"`
+	LogFile string `ini:"log_file"`
+	Debug   bool   `ini:"debug"`
 }
 
 type Rbac struct {
-	Enabled   string `ini:"enabled"`
+	Enabled   bool   `ini:"enabled"`
 	Mappings  string `ini:"mappings"`
 	Blacklist string `ini:"blacklist"`
 }
@@ -51,6 +58,26 @@ type Data struct {
 	Subnet string `json:"subnet"`
 	Tenant string `json:"tenant"`
 	Ip     string `json:"ip"`
+}
+
+func ConvertMappings(mappings string) map[string][]string {
+	var results = make(map[string][]string)
+	for _, entry := range strings.Split(mappings, ",") {
+		info := strings.Split(entry, ":")
+		results[info[0]] = make([]string, 0)
+		for _, subnet := range strings.Split(info[1], "+") {
+			results[info[0]] = append(results[info[0]], subnet)
+		}
+	}
+	return results
+}
+
+func ConvertBlacklist(blacklist string) []string {
+	var results []string
+	for _, entry := range strings.Split(blacklist, ",") {
+		results = append(results, entry)
+	}
+	return results
 }
 
 func Ips(cidr string) ([]string, error) {
@@ -130,7 +157,6 @@ func authenticate(endpoint string, username string, password string, tenant stri
 	}
 	auth, err := openstack.AuthenticatedClient(opts)
 	if err != nil {
-		fmt.Println("failed to authenticate")
 		return ""
 	}
 	k := openstack.NewIdentityV2(auth)
@@ -191,9 +217,39 @@ func getip(w http.ResponseWriter, r *http.Request) {
 		w.Write(response)
 		return
 	}
+	if config.Rbac.Enabled == true {
+		if len(mappings) != 0 {
+			mappingsinfo, ok := mappings[tenant]
+			if ok == false {
+				w.WriteHeader(401)
+				message := Error{Message: "Subnet not allowed by RBAC"}
+				response, _ := json.Marshal(message)
+				w.Write(response)
+				return
+			}
+			subnetfound := false
+			for _, s := range mappingsinfo {
+				if s == subnet {
+					subnetfound = true
+				}
+			}
+			if !subnetfound {
+				w.WriteHeader(401)
+				message := Error{Message: "Subnet not allowed by RBAC"}
+				response, _ := json.Marshal(message)
+				w.Write(response)
+				return
+			}
+		}
+	}
 	networkid := subnetinfo.NetworkID
 	cidr := subnetinfo.CIDR
 	floatings := GetPorts(n, cidr)
+	if len(blacklist) > 0 {
+		for _, element := range blacklist {
+			floatings[element] = true
+		}
+	}
 	ips, _ := Ips(cidr)
 	var ip string
 	for _, i := range ips {
@@ -207,24 +263,48 @@ func getip(w http.ResponseWriter, r *http.Request) {
 		FloatingIP:        ip,
 		TenantID:          tenantid,
 	}
-	floatingips.Create(n, opts).Extract()
-	log.Printf("Associating ip %s from subnet %s to tenant %s\n", ip, subnet, tenant)
-	w.WriteHeader(200)
-	data := Data{Subnet: subnet, Tenant: tenant, Ip: ip}
-	response, _ := json.Marshal(data)
-	w.Write(response)
+	if config.Defaults.Debug {
+		log.Printf("Floatingip data:%s\n", opts)
+	}
+	_, err := floatingips.Create(n, opts).Extract()
+	if err != nil {
+		log.Printf("Couldnt associate floating because of %v", err)
+		w.WriteHeader(403)
+		message := Error{Message: err.Error()}
+		response, _ := json.Marshal(message)
+		w.Write(response)
+
+	} else {
+		log.Printf("Associating ip %s from subnet %s to tenant %s\n", ip, subnet, tenant)
+		w.WriteHeader(200)
+		data := Data{Subnet: subnet, Tenant: tenant, Ip: ip}
+		response, _ := json.Marshal(data)
+		w.Write(response)
+	}
 	return
 }
 
 func main() {
-	defaults := Defaults{Host: "0.0.0.0", Port: "7000", Ssl: "false"}
+	defaults := Defaults{Host: "0.0.0.0", Port: "7000", Ssl: false, Debug: false, Cert: "/etc/fiaas.crt", Key: "/etc/fiaas.key", LogFile: "fiaas.log", LogDir: "/var/log"}
 	keystone := Keystone{AdminUser: "admin", AdminTenant: "admin"}
-	rbac := Rbac{Enabled: "false"}
+	rbac := Rbac{Enabled: false}
 	config = &Config{Defaults: defaults, Keystone: keystone, Rbac: rbac}
-	ini.MapTo(config, "fiaas.conf")
+	ini.MapTo(config, "/etc/fiaas.conf")
+	mappings = ConvertMappings(config.Rbac.Mappings)
+	blacklist = ConvertBlacklist(config.Rbac.Blacklist)
+	out, _ := os.Create(config.Defaults.LogDir + "/" + config.Defaults.LogFile)
+	//out, _ := os.OpenFile(config.Defaults.LogDir+"/"+config.Defaults.LogFile, os.O_APPEND, 0666)
+	log.SetOutput(out)
 	http.HandleFunc("/getip", getip)
-	err := http.ListenAndServe(config.Defaults.Host+":"+config.Defaults.Port, nil)
-	if err != nil {
-		log.Fatal("ListenAndServe: ", err)
+	if config.Defaults.Ssl == true {
+		err := http.ListenAndServeTLS(config.Defaults.Host+":"+config.Defaults.Port, config.Defaults.Cert, config.Defaults.Key, nil)
+		if err != nil {
+			log.Fatal("ListenAndServe: ", err)
+		}
+	} else {
+		err := http.ListenAndServe(config.Defaults.Host+":"+config.Defaults.Port, nil)
+		if err != nil {
+			log.Fatal("ListenAndServe: ", err)
+		}
 	}
 }
