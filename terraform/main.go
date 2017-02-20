@@ -17,6 +17,7 @@ type Server struct {
 	Endpoint string
 	User     string
 	Password string
+	Insecure bool
 }
 
 type Credentials struct {
@@ -43,14 +44,18 @@ func (c *Server) GetIp(credentials *Credentials) Data {
 	data1 := url.Values{}
 	data1.Add("tenant", credentials.Tenant)
 	data1.Add("subnet", credentials.Subnet)
-	transCfg := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // ignore expired SSL certificates
-	}
 	req, err := http.NewRequest("POST", c.Endpoint, strings.NewReader(data1.Encode()))
 	req.SetBasicAuth(c.User, c.Password)
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-	//cli := &http.Client{}
-	cli := &http.Client{Transport: transCfg}
+	var cli *http.Client
+	if c.Insecure {
+		transCfg := &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
+		cli = &http.Client{Transport: transCfg}
+	} else {
+		cli = &http.Client{}
+	}
 	resp, err := cli.Do(req)
 	if err != nil {
 		log.Fatalln(err)
@@ -101,6 +106,13 @@ func providerSchema() map[string]*schema.Schema {
 			Required:    true,
 			Description: "Password",
 		},
+		"insecure": &schema.Schema{
+			Type:        schema.TypeBool,
+			Optional:    true,
+			Description: "Insecure SSL",
+			//DefaultFunc: schema.DefaultFunc(false),
+			DefaultFunc: schema.EnvDefaultFunc("INSECURE", false),
+		},
 	}
 }
 
@@ -140,6 +152,7 @@ func providerConfigure(d *schema.ResourceData) (interface{}, error) {
 		Endpoint: d.Get("endpoint").(string),
 		User:     d.Get("user").(string),
 		Password: d.Get("password").(string),
+		Insecure: d.Get("insecure").(bool),
 	}
 
 	return &client, nil
