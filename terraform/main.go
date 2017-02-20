@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"github.com/hashicorp/terraform/helper/schema"
@@ -42,10 +43,14 @@ func (c *Server) GetIp(credentials *Credentials) Data {
 	data1 := url.Values{}
 	data1.Add("tenant", credentials.Tenant)
 	data1.Add("subnet", credentials.Subnet)
+	transCfg := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // ignore expired SSL certificates
+	}
 	req, err := http.NewRequest("POST", c.Endpoint, strings.NewReader(data1.Encode()))
 	req.SetBasicAuth(c.User, c.Password)
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-	cli := &http.Client{}
+	//cli := &http.Client{}
+	cli := &http.Client{Transport: transCfg}
 	resp, err := cli.Do(req)
 	if err != nil {
 		log.Fatalln(err)

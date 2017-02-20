@@ -6,5 +6,5 @@ provider "fiaas" {
 
 resource "fiaas_ip" "my-speedy-ip5" {
   tenant = "testk"
-  subnet = "pro"
+  subnet = "dev"
 }
